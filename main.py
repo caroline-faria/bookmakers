@@ -6,31 +6,31 @@ app = FastAPI()
 async def raiz():
     return {"mensagem": "API de favoritos rodando com sucesso!"}
 
-@app.post("/receber-favoritos")
-async def receber_favoritos(request: Request):
-    dados = await request.json()
-    
-    # Aqui você captura o carimbo de data/hora e a árvore de favoritos
-    timestamp = dados.get("timestamp")
-    favoritos = dados.get("favoritos")
-    
-    print(f"Dados recebidos em: {timestamp}")
-    
-    # Próximo passo: Salvar em um banco de dados ou processar com seu modelo
-    # Exemplo: salvar_no_banco_ou_dataframe(favoritos)
-    
-    return {"status": "sucesso", "mensagem": "Favoritos coletados com sucesso!"}
-
-# Banco de dados simulado em memória (para testes)
+# Lista temporária em memória para armazenar o que chegar (para testes)
 banco_temporario = []
 
 @app.post("/receber-favoritos")
 async def receber_favoritos(request: Request):
     dados = await request.json()
-    banco_temporario.append(dados)
-    return {"status": "sucesso"}
+    
+    timestamp = dados.get("timestamp")
+    favoritos = dados.get("favoritos")
 
-# Rota para conferir os dados salvos
+    # Imprime os dados detalhados no console do Render
+    print(f"--- DADOS RECEBIDOS ---")
+    print(f"Timestamp: {timestamp}")
+    print(f"Favoritos: {favoritos}")
+    
+    # Salva na lista temporária
+    banco_temporario.append(dados)
+
+    return {
+        "status": "sucesso", 
+        "mensagem": "Favoritos coletados com sucesso!",
+        "total_recebido": len(favoritos) if favoritos else 0
+    }
+
+# Rota para você acessar no navegador e ver o que foi salvo
 @app.get("/ver-favoritos")
 async def ver_favoritos():
-    return {"total_registros": len(banco_temporario), "dados": banco_temporario}
+    return {"registros": banco_temporario}
