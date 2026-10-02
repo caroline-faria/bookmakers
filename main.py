@@ -1,29 +1,36 @@
 from fastapi import FastAPI, Request
-from datetime import datetime
+from fastapi.responses import JSONResponse
+import json
 
 app = FastAPI()
-@app.get("/")
-async def raiz():
-    return {"mensagem": "API de favoritos rodando com sucesso!"}
 
-# Lista temporária em memória para armazenar o que chegar (para testes)
+# Lista temporária em memória para acumular os favoritos recebidos
+# (Lembre-se: se o Render reiniciar, essa lista zera)
 banco_temporario = []
-
-# Rota para você acessar no navegador e ver o que foi salvo
-@app.get("/ver-favoritos")
-async def ver_favoritos():
-    return {"registros": banco_temporario}
-
 
 @app.post("/receber-favoritos")
 async def receber_favoritos(request: Request):
-    # Tenta pegar o JSON bruto que chegou na requisição
-    dados = await request.json()
+    try:
+        dados = await request.json()
+    except Exception:
+        return {"status": "erro", "mensagem": "O corpo da requisição não é um JSON válido."}
     
-    print("DADOS BRUTOS RECEBIDOS:", dados)
+    # Adiciona os dados recebidos na nossa lista em memória
+    banco_temporario.append(dados)
+    
+    print(f"Favoritos recebidos e armazenados temporariamente. Total de registros: {len(banco_temporario)}")
 
-    # Retorna exatamente o que ela recebeu para você conferir na hora
     return {
-        "status": "sucesso",
-        "dados_que_a_api_recebeu": dados
+        "status": "sucesso", 
+        "mensagem": "Favoritos coletados com sucesso!",
+        "dados_recebidos": dados
     }
+
+# NOVA ROTA: Para baixar os dados salvos em formato JSON
+@app.get("/baixar-favoritos")
+async def baixar_favoritos():
+    # Retorna os dados formatados como um arquivo JSON para download direto no navegador
+    return JSONResponse(
+        content={"favoritos_acumulados": banco_temporario},
+        headers={"Content-Disposition": "attachment; filename=favoritos_backup.json"}
+    )
