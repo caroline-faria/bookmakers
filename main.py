@@ -2,6 +2,9 @@ from fastapi import FastAPI, Request
 from datetime import datetime
 
 app = FastAPI()
+@app.get("/")
+async def raiz():
+    return {"mensagem": "API de favoritos rodando com sucesso!"}
 
 @app.post("/receber-favoritos")
 async def receber_favoritos(request: Request):
