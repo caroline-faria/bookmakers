@@ -1,4 +1,4 @@
 fastapi
 uvicorn
-pydantic
-pandas
+httpx
+beautifulsoup4
