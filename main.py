@@ -97,3 +97,17 @@ async def baixar_favoritos():
         content={"historico_raspagem": banco_temporario},
         headers={"Content-Disposition": "attachment; filename=favoritos_raspados.json"}
     )
+
+# Lista em memória para guardar os favoritos recebidos
+favoritos_recebidos_historico = []
+
+@app.post("/api/bookmarks")
+def receive_bookmarks(data: dict):
+    # Salva os dados recebidos na nossa lista em memória
+    favoritos_recebidos_historico.append(data)
+    return {"success": True, "total": len(data.get("bookmarks", []))}
+
+# Nova rota para visualizar pelo navegador
+@app.get("/ver-favoritos")
+def ver_favoritos():
+    return {"total_envios": len(favoritos_recebidos_historico), "dados": favoritos_recebidos_historico}
