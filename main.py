@@ -103,10 +103,13 @@ favoritos_recebidos_historico = []
 
 @app.post("/api/bookmarks")
 def receive_bookmarks(data: dict):
-    # Salva os dados recebidos na nossa lista em memória
-    favoritos_recebidos_historico.append(data)
+    # Imprime os dados recebidos diretamente nos logs do Render
+    print("=== DADOS RECEBIDOS DA EXTENSÃO ===")
+    print(data)
+    print("==================================="
+    
+    banco_temporario.append(data)
     return {"success": True, "total": len(data.get("bookmarks", []))}
-
 # Nova rota para visualizar pelo navegador
 @app.get("/ver-favoritos")
 def ver_favoritos():
