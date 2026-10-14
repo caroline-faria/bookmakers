@@ -1,10 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from bs4 import BeautifulSoup
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
@@ -21,7 +19,6 @@ app.add_middleware(
 def receive_bookmarks(data: dict):
     return {"success": True, "total": data.get("total")}
 
-
 # Lista temporária em memória para acumular os dados raspados
 banco_temporario = []
 
@@ -30,7 +27,7 @@ async def raiz():
     return {
         "status": "online",
         "mensagem": "API de raspagem de favoritos rodando!",
-        "rotas": ["POST /importar-favoritos", "GET /baixar-favoritos"]
+        "rotas": ["POST /api/bookmarks", "POST /importar-favoritos", "GET /baixar-favoritos"]
     }
 
 # ROTA 1: Envia o arquivo HTML exportado do navegador
