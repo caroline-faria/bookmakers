@@ -3,7 +3,24 @@ from fastapi.responses import JSONResponse
 import httpx
 from bs4 import BeautifulSoup
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+# Configuração do CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Ou coloque ["chrome-extension://lhadedhpmipelebihpenoefkakhenebl"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.post("/api/bookmarks")
+def receive_bookmarks(data: dict):
+    return {"success": True, "total": data.get("total")}
+
 
 # Lista temporária em memória para acumular os dados raspados
 banco_temporario = []
