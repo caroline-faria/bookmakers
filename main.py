@@ -15,6 +15,110 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+from datetime import datetime
+from typing import List, Optional
+from fastapi import FastAPI, Depends, HTTPException, status
+from pydantic import BaseModel, HttpUrl
+from sqlalchemy import Column, DateTime, Integer, String, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session, sessionmaker
+
+# --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+# O Render fornece a URL do PostgreSQL através da variável de ambiente DATABASE_URL.
+# Se estiver rodando localmente sem ela, usamos um banco SQLite de teste por segurança.
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./bookmarks.sqlite")
+
+# Correção necessária para o Render caso a URL comece com "postgres://" em vez de "postgresql://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Configuração da engine (compatível com SQLite e PostgreSQL)
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# --- MODELO DO BANCO DE DADOS (SQLAlchemy) ---
+class BookmarkModel(Base):
+    __tablename__ = "bookmarks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True)
+    url = Column(String, unique=True, index=True)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# Cria as tabelas automaticamente ao iniciar (caso não existam)
+Base.metadata.create_all(bind=engine)
+
+
+# --- ESQUEMAS DE DADOS (Pydantic) ---
+class BookmarkCreate(BaseModel):
+    title: str
+    url: str
+    description: Optional[str] = None
+
+class BookmarkResponse(BookmarkCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True # Compatível com versões recentes do Pydantic (v2)
+
+
+# --- DEPENDÊNCIA DE SESSÃO DO BANCO ---
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# --- APLICAÇÃO FASTAPI ---
+app = FastAPI(title="API de Bookmarks - Render", version="1.0")
+
+@app.get("/")
+def read_root():
+    return {"status": "API está rodando com sucesso!"}
+
+
+# --- ROTA POST: Salvar um novo bookmark no banco ---
+@app.post("/api/bookmarks", response_model=BookmarkResponse, status_code=status.HTTP_201_CREATED)
+def create_bookmark(bookmark: BookmarkCreate, db: Session = Depends(get_db)):
+    # Verifica se a URL já existe para evitar duplicatas (opcional)
+    existing = db.query(BookmarkModel).filter(BookmarkModel.url == bookmark.url).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Este favorito com essa URL já está cadastrado."
+        )
+
+    # Cria o registro mapeado para o banco
+    db_bookmark = BookmarkModel(
+        title=bookmark.title,
+        url=bookmark.url,
+        description=bookmark.description
+    )
+    
+    # Salva efetivamente no banco de dados do Render
+    db.add(db_bookmark)
+    db.commit()
+    db.refresh(db_bookmark)
+    
+    return db_bookmark
+
+
+# --- ROTA GET: Listar todos os bookmarks salvos ---
+@app.get("/api/bookmarks", response_model=List[BookmarkResponse])
+def list_bookmarks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    bookmarks = db.query(BookmarkModel).offset(skip).limit(limit).all()
+    return bookmarks
+
 @app.post("/api/bookmarks")
 def receive_bookmarks(data: dict):
     return {"success": True, "total": data.get("total")}
