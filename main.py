@@ -56,6 +56,13 @@ Base = declarative_base()
 
 # --- MODELO DO BANCO DE DADOS ---
 class BookmarkModel(Base):
+  
+    title: str
+    url: str
+    dateAdded: Optional[int] = None
+    extracted_text: Optional[str] = None  # <-- Novo: recebe o texto se vier pronto
+    event_date: Optional[str] = None       # <-- Novo: recebe a data se vier pront
+    
     __tablename__ = "bookmarks"
 
     id = Column(Integer, primary_key=True, index=True)
