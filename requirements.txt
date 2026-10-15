@@ -6,3 +6,5 @@ python-multipart
 sqlalchemy
 psycopg2-binary
 pydantic
+psycopg[binary]
+
