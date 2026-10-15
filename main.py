@@ -208,7 +208,7 @@ def create_bookmarks_batch(
                 event_date=item.event_date,          # Salva a data enviada (se houver)
                 analisado_ml=1 if item.extracted_text else 0  # Se já mandou o texto, marca como processado!
             )
-            )
+            
             db.add(db_bookmark)
             salvos_contador += 1
 
