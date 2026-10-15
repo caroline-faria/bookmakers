@@ -6,17 +6,19 @@ from bs4 import BeautifulSoup
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware  # <--- 1. Importe o CORSMiddleware
+# ... (restante das suas importações)
 
 app = FastAPI(title="API de Bookmarks - Render", version="1.0")
 
-# --- CONFIGURAÇÃO DE CORS ---
+# --- 2. ADICIONE ESTE BLOCO DE CORS LOGO ABAIXO ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite requisições de qualquer origem (inclusive extensões do Chrome)
+    allow_origins=["*"],  # Permite requisições de qualquer origem (extensões, sites, etc.)
     allow_credentials=True,
     allow_methods=["*"],  # Permite todos os métodos (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],  # Permite todos os headers
+    allow_headers=["*"],  # Permite todos os cabeçalhos
 )
 
 import os
