@@ -215,7 +215,19 @@ def processar_links_pendentes(limite: int = 5, db: Session = Depends(get_db)):
         "detalhes": resultados
     }
 
+from fastapi.responses import PlainTextResponse
 
+@app.get("/api/bookmarks/{bookmark_id}/texto", response_class=PlainTextResponse)
+def ver_conteudo_pagina(bookmark_id: int, db: Session = Depends(get_db)):
+    bookmark = db.query(BookmarkModel).filter(BookmarkModel.id == bookmark_id).first()
+    if not bookmark:
+        raise HTTPException(status_code=404, detail="Bookmark não encontrado.")
+    
+    if not bookmark.extracted_text:
+        return "Este link ainda não foi processado pelo pipeline de scraping ou nenhum texto foi extraído."
+        
+    return bookmark.extracted_text
+    
 @app.get("/api/bookmarks", response_model=List[BookmarkResponse])
 def list_bookmarks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     bookmarks = db.query(BookmarkModel).offset(skip).limit(limit).all()
