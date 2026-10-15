@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
@@ -13,9 +13,9 @@ from bs4 import BeautifulSoup
 import dateparser
 
 # --- APLICAÇÃO FASTAPI ---
-app = FastAPI(title="API de Bookmarks & ML - Render", version="1.3")
+app = FastAPI(title="API de Bookmarks & ML - Render", version="1.5")
 
-# --- CONFIGURAÇÃO DE CORS (ROBUSTA PARA ERROS E EXTENSÕES) ---
+# --- CONFIGURAÇÃO DE CORS ROBUSTA ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,6 +24,19 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# Middleware de garantia para requisições OPTIONS e erros
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
@@ -51,10 +64,10 @@ class BookmarkModel(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Campos para o Pipeline de Machine Learning
+    # Campos para o Pipeline de Machine Learning / Scraping
     extracted_text = Column(Text, nullable=True)
     event_date = Column(String, nullable=True)
-    analisado_ml = Column(Integer, default=0) # 0 = Pendente, 1 = Processado, -1 = Erro
+    analisado_ml = Column(Integer, default=0)  # 0 = Pendente, 1 = Processado, -1 = Erro
 
 Base.metadata.create_all(bind=engine)
 
@@ -122,7 +135,7 @@ def extrair_texto_e_data_de_url(url: str):
 # --- ROTAS DA API ---
 @app.get("/")
 def read_root():
-    return {"status": "API de Bookmarks com CORS e Pipeline de ML rodando no Render!"}
+    return {"status": "API de Bookmarks otimizada e rodando no Render!"}
 
 
 @app.post("/api/bookmarks", status_code=status.HTTP_201_CREATED)
@@ -130,32 +143,38 @@ def create_bookmarks_batch(payload: BookmarkBatchCreate, db: Session = Depends(g
     salvos_contador = 0
     duplicados_contador = 0
 
-    for item in payload.bookmarks:
-        existing = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
-        if existing:
-            duplicados_contador += 1
-            continue
+    try:
+        for item in payload.bookmarks:
+            existing = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
+            if existing:
+                duplicados_contador += 1
+                continue
 
-        date_str = None
-        if item.dateAdded:
-            try:
-                date_str = datetime.fromtimestamp(item.dateAdded / 1000).strftime('%Y-%m-%d %H:%M:%S')
-            except Exception:
-                date_str = str(item.dateAdded)
+            date_str = None
+            if item.dateAdded:
+                try:
+                    date_str = datetime.fromtimestamp(item.dateAdded / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    date_str = str(item.dateAdded)
 
-        db_bookmark = BookmarkModel(
-            title=item.title,
-            url=item.url,
-            description=date_str,
-            analisado_ml=0
-        )
-        
-        db.add(db_bookmark)
+            db_bookmark = BookmarkModel(
+                title=item.title,
+                url=item.url,
+                description=date_str,
+                analisado_ml=0
+            )
+            db.add(db_bookmark)
+            salvos_contador += 1
+
+        # Commit único para todo o lote (muito mais rápido e seguro contra timeouts)
         db.commit()
-        salvos_contador += 1
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro interno ao salvar lote: {str(e)}")
 
     return {
-        "message": "Lote recebido com sucesso!",
+        "message": "Lote recebido e salvo com sucesso!",
         "novos_salvos": salvos_contador,
         "ja_existentes": duplicados_contador
     }
