@@ -16,7 +16,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Permite requisições de qualquer origem (inclusive extensões do Chrome)
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos os métodos (GET, POST, OPTIONS, PUT, DELETE, etc.)
+    allow_methods=["*"],  # Permite todos os métodos (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Permite todos os headers
 )
 
@@ -52,14 +52,22 @@ class BookmarkModel(Base):
 Base.metadata.create_all(bind=engine)
 
 
-# --- ESQUEMAS DE DADOS (Pydantic) ---
-class BookmarkCreate(BaseModel):
+# --- ESQUEMAS DE DADOS (Pydantic - Ajustados para receber o lote) ---
+class BookmarkItem(BaseModel):
+    title: str
+    url: str
+    dateAdded: Optional[int] = None
+
+class BookmarkBatchCreate(BaseModel):
+    timestamp: Optional[str] = None
+    total: Optional[int] = None
+    bookmarks: List[BookmarkItem]
+
+class BookmarkResponse(BaseModel):
+    id: int
     title: str
     url: str
     description: Optional[str] = None
-
-class BookmarkResponse(BookmarkCreate):
-    id: int
     created_at: datetime
 
     class Config:
@@ -78,33 +86,49 @@ def get_db():
 # --- ROTAS DA API ---
 @app.get("/")
 def read_root():
-    return {"status": "API está rodando com CORS e Banco de Dados configurados!"}
+    return {"status": "API de Bookmarks rodando com sucesso no Render!"}
 
 
-@app.post("/api/bookmarks", response_model=BookmarkResponse, status_code=status.HTTP_201_CREATED)
-def create_bookmark(bookmark: BookmarkCreate, db: Session = Depends(get_db)):
-    # Verifica se a URL já existe
-    existing = db.query(BookmarkModel).filter(BookmarkModel.url == bookmark.url).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Este favorito com essa URL já está cadastrado."
+# --- ROTA POST: Recebe o lote de favoritos da extensão ---
+@app.post("/api/bookmarks", status_code=status.HTTP_201_CREATED)
+def create_bookmarks_batch(payload: BookmarkBatchCreate, db: Session = Depends(get_db)):
+    salvos_contador = 0
+    duplicados_contador = 0
+
+    for item in payload.bookmarks:
+        # Verifica se a URL já existe para evitar duplicar registros
+        existing = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
+        if existing:
+            duplicados_contador += 1
+            continue
+
+        # Converte o timestamp epoch (milissegundos) para texto legível, se houver
+        date_str = None
+        if item.dateAdded:
+            try:
+                date_str = datetime.fromtimestamp(item.dateAdded / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                date_str = str(item.dateAdded)
+
+        db_bookmark = BookmarkModel(
+            title=item.title,
+            url=item.url,
+            description=date_str
         )
+        
+        db.add(db_bookmark)
+        db.commit()
+        salvos_contador += 1
 
-    # Cria o registro no banco
-    db_bookmark = BookmarkModel(
-        title=bookmark.title,
-        url=bookmark.url,
-        description=bookmark.description
-    )
-    
-    db.add(db_bookmark)
-    db.commit()
-    db.refresh(db_bookmark)
-    
-    return db_bookmark
+    return {
+        "message": "Processamento concluído com sucesso!",
+        "novos_salvos": salvos_contador,
+        "ja_existentes": duplicados_contador,
+        "total_recebido": len(payload.bookmarks)
+    }
 
 
+# --- ROTA GET: Listar todos os bookmarks salvos ---
 @app.get("/api/bookmarks", response_model=List[BookmarkResponse])
 def list_bookmarks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     bookmarks = db.query(BookmarkModel).offset(skip).limit(limit).all()
