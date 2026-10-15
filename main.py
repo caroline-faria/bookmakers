@@ -57,11 +57,7 @@ Base = declarative_base()
 # --- MODELO DO BANCO DE DADOS ---
 class BookmarkModel(Base):
   
-    title: str
-    url: str
-    dateAdded: Optional[int] = None
-    extracted_text: Optional[str] = None  # <-- Novo: recebe o texto se vier pronto
-    event_date: Optional[str] = None       # <-- Novo: recebe a data se vier pront
+    
     
     __tablename__ = "bookmarks"
 
@@ -81,6 +77,12 @@ Base.metadata.create_all(bind=engine)
 
 # --- ESQUEMAS DE DADOS (Pydantic) ---
 class BookmarkItem(BaseModel):
+
+    title: str
+    url: str
+    dateAdded: Optional[int] = None
+    extracted_text: Optional[str] = None  # <-- Novo: recebe o texto se vier pronto
+    event_date: Optional[str] = None       # <-- Novo: recebe a data se vier pront
     title: str
     url: str
     dateAdded: Optional[int] = None
@@ -202,7 +204,10 @@ def create_bookmarks_batch(
                 title=item.title,
                 url=item.url,
                 description=date_str,
-                analisado_ml=0
+                extracted_text=item.extracted_text,  # Salva o texto enviado pelo navegador
+                event_date=item.event_date,          # Salva a data enviada (se houver)
+                analisado_ml=1 if item.extracted_text else 0  # Se já mandou o texto, marca como processado!
+            )
             )
             db.add(db_bookmark)
             salvos_contador += 1
