@@ -106,12 +106,29 @@ def get_db():
 
 
 # --- WEB SCRAPING E NLP ---
+# --- WEB SCRAPING E NLP ROBUSTO ---
 def extrair_texto_e_data_de_url(url: str):
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        with httpx.Client(headers=headers, timeout=8.0, follow_redirects=True) as client:
+        # Headers simulando um navegador Chrome real para evitar bloqueios básicos
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1"
+        }
+        
+        with httpx.Client(headers=headers, timeout=12.0, follow_redirects=True) as client:
             response = client.get(url)
+            print(f"Tentando acessar: {url} -> Status Code: {response.status_code}")
+            
             if response.status_code != 200:
+                print(f"Acesso bloqueado ou inválido para {url} (Status: {response.status_code})")
                 return None, None
             
             soup = BeautifulSoup(response.text, "html.parser")
@@ -121,13 +138,17 @@ def extrair_texto_e_data_de_url(url: str):
             texto_bruto = soup.get_text(separator=" ", strip=True)
             texto_limpo = " ".join(texto_bruto.split())[:4000]
             
+            if not texto_limpo:
+                return None, None
+                
             texto_para_data = (soup.title.string if soup.title else "") + " " + texto_limpo[:500]
             parsed_date = dateparser.parse(texto_para_data, languages=['pt', 'en'])
             data_str = parsed_date.strftime('%Y-%m-%d') if parsed_date else None
             
             return texto_limpo, data_str
+            
     except Exception as e:
-        print(f"Erro ao raspar a URL {url}: {e}")
+        print(f"Erro crítico ao raspar a URL {url}: {e}")
         return None, None
 
 
