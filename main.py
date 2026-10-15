@@ -1,8 +1,9 @@
 import os
 from datetime import datetime
 from typing import List, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
+from fastapi import BackgroundTasks, FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -13,7 +14,7 @@ from bs4 import BeautifulSoup
 import dateparser
 
 # --- APLICAÇÃO FASTAPI ---
-app = FastAPI(title="API de Bookmarks & ML - Render", version="1.7")
+app = FastAPI(title="API de Bookmarks & ML - Render", version="1.8")
 
 # --- CONFIGURAÇÃO DE CORS ROBUSTA ---
 app.add_middleware(
@@ -25,7 +26,6 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Middleware de garantia para requisições OPTIONS e erros
 @app.middleware("http")
 async def add_cors_headers(request: Request, call_next):
     if request.method == "OPTIONS":
@@ -64,13 +64,11 @@ class BookmarkModel(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Campos para o Pipeline de Machine Learning / Scraping
     extracted_text = Column(Text, nullable=True)
     event_date = Column(String, nullable=True)
     analisado_ml = Column(Integer, default=0)  # 0 = Pendente, 1 = Processado, -1 = Erro
 
-# LIMPEZA TEMPORÁRIA: Apaga a tabela antiga com erro e recria a nova com todas as colunas
-Base.metadata.drop_all(bind=engine)
+# IMPORTANTE: drop_all foi removido para não apagar mais os seus dados!
 Base.metadata.create_all(bind=engine)
 
 
@@ -99,7 +97,6 @@ class BookmarkResponse(BaseModel):
         from_attributes = True
 
 
-# --- DEPENDÊNCIA DE SESSÃO DO BANCO ---
 def get_db():
     db = SessionLocal()
     try:
@@ -134,14 +131,39 @@ def extrair_texto_e_data_de_url(url: str):
         return None, None
 
 
+# --- TAREFA EM SEGUNDO PLANO (AUTOMATIZAÇÃO DO SCRAPING) ---
+def processar_pendentes_background(db_factory, limite: int = 50):
+    db = db_factory()
+    try:
+        pendentes = db.query(BookmarkModel).filter(BookmarkModel.analisado_ml == 0).limit(limite).all()
+        for bm in pendentes:
+            texto_extraido, data_encontrada = extrair_texto_e_data_de_url(bm.url)
+            if texto_extraido:
+                bm.extracted_text = texto_extraido
+                if data_encontrada and not bm.event_date:
+                    bm.event_date = data_encontrada
+                bm.analisado_ml = 1
+            else:
+                bm.analisado_ml = -1
+            db.commit()
+    except Exception as e:
+        print(f"Erro no background task de scraping: {e}")
+    finally:
+        db.close()
+
+
 # --- ROTAS DA API ---
 @app.get("/")
 def read_root():
-    return {"status": "API de Bookmarks resetada e rodando no Render!"}
+    return {"status": "API de Bookmarks & ML rodando perfeitamente no Render!"}
 
 
 @app.post("/api/bookmarks", status_code=status.HTTP_201_CREATED)
-def create_bookmarks_batch(payload: BookmarkBatchCreate, db: Session = Depends(get_db)):
+def create_bookmarks_batch(
+    payload: BookmarkBatchCreate, 
+    background_tasks: BackgroundTasks, 
+    db: Session = Depends(get_db)
+):
     salvos_contador = 0
     duplicados_contador = 0
 
@@ -170,19 +192,23 @@ def create_bookmarks_batch(payload: BookmarkBatchCreate, db: Session = Depends(g
 
         db.commit()
 
+        # DISPARA O SCRAPING AUTOMATICAMENTE EM SEGUNDO PLANO QUANDO NOVOS FOREM SALVOS
+        if salvos_contador > 0:
+            background_tasks.add_task(processar_pendentes_background, SessionLocal, limite=50)
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro interno ao salvar lote: {str(e)}")
 
     return {
-        "message": "Lote recebido e salvo com sucesso!",
+        "message": "Lote recebido, salvo e scraping automatizado iniciado!",
         "novos_salvos": salvos_contador,
         "ja_existentes": duplicados_contador
     }
 
 
 @app.post("/api/bookmarks/processar-links", status_code=status.HTTP_200_OK)
-def processar_links_pendentes(limite: int = 5, db: Session = Depends(get_db)):
+def processar_links_pendentes_manual(limite: int = 5, db: Session = Depends(get_db)):
     pendentes = db.query(BookmarkModel).filter(BookmarkModel.analisado_ml == 0).limit(limite).all()
     
     if not pendentes:
@@ -215,7 +241,6 @@ def processar_links_pendentes(limite: int = 5, db: Session = Depends(get_db)):
         "detalhes": resultados
     }
 
-from fastapi.responses import PlainTextResponse
 
 @app.get("/api/bookmarks/{bookmark_id}/texto", response_class=PlainTextResponse)
 def ver_conteudo_pagina(bookmark_id: int, db: Session = Depends(get_db)):
@@ -227,7 +252,8 @@ def ver_conteudo_pagina(bookmark_id: int, db: Session = Depends(get_db)):
         return "Este link ainda não foi processado pelo pipeline de scraping ou nenhum texto foi extraído."
         
     return bookmark.extracted_text
-    
+
+
 @app.get("/api/bookmarks", response_model=List[BookmarkResponse])
 def list_bookmarks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     bookmarks = db.query(BookmarkModel).offset(skip).limit(limit).all()
