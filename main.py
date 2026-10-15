@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 import dateparser
 
 # --- APLICAÇÃO FASTAPI ---
-app = FastAPI(title="API de Bookmarks & ML - Render", version="1.5")
+app = FastAPI(title="API de Bookmarks & ML - Render", version="1.7")
 
 # --- CONFIGURAÇÃO DE CORS ROBUSTA ---
 app.add_middleware(
@@ -69,6 +69,8 @@ class BookmarkModel(Base):
     event_date = Column(String, nullable=True)
     analisado_ml = Column(Integer, default=0)  # 0 = Pendente, 1 = Processado, -1 = Erro
 
+# LIMPEZA TEMPORÁRIA: Apaga a tabela antiga com erro e recria a nova com todas as colunas
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 
@@ -135,7 +137,7 @@ def extrair_texto_e_data_de_url(url: str):
 # --- ROTAS DA API ---
 @app.get("/")
 def read_root():
-    return {"status": "API de Bookmarks otimizada e rodando no Render!"}
+    return {"status": "API de Bookmarks resetada e rodando no Render!"}
 
 
 @app.post("/api/bookmarks", status_code=status.HTTP_201_CREATED)
@@ -166,7 +168,6 @@ def create_bookmarks_batch(payload: BookmarkBatchCreate, db: Session = Depends(g
             db.add(db_bookmark)
             salvos_contador += 1
 
-        # Commit único para todo o lote (muito mais rápido e seguro contra timeouts)
         db.commit()
 
     except Exception as e:
