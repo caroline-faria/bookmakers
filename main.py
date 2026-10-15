@@ -6,13 +6,12 @@ from datetime import datetime
 from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS (POSTGRESQL) ---
-# Substitua pela sua URL do Render ou use variável de ambiente
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 
 engine = create_engine(DATABASE_URL)
@@ -26,16 +25,27 @@ class BookmarkModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     url = Column(String, unique=True, index=True)
-    description = Column(String, nullable=True)  # Armazena dados descritivos/data
+    description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    extracted_text = Column(Text, nullable=True)     # Texto puro extraído
-    event_date = Column(String, nullable=True)       # Data identificada por NLP
-    analisado_ml = Column(Integer, default=0)        # 0 = Pendente, 1 = Processado, -1 = Erro
+    extracted_text = Column(Text, nullable=True)
+    event_date = Column(String, nullable=True)
+    analisado_ml = Column(Integer, default=0)
 
-# ⚠️ ATENÇÃO: Deixe ativado APENAS para o próximo deploy para atualizar as colunas. 
-# Depois de subir e testar, comente estas duas linhas para não apagar seus dados em futuros deploys!
-Base.metadata.drop_all(bind=engine)
-Base.metadata.create_all(bind=engine)
+# --- MIGRAÇÃO AUTOMÁTICA (Compatível com Plano Gratuito do Render) ---
+def atualizar_estrutura_banco():
+    try:
+        Base.metadata.create_all(bind=engine)
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS extracted_text TEXT;"))
+            conn.execute(text("ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS event_date VARCHAR;"))
+            conn.execute(text("ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS analisado_ml INTEGER DEFAULT 0;"))
+            conn.commit()
+            print("Estrutura do banco de dados atualizada/verificada com sucesso!")
+    except Exception as e:
+        print(f"Aviso na migração do banco: {e}")
+
+# Executa a verificação e migração assim que a aplicação inicia
+atualizar_estrutura_banco()
 
 # --- CONFIGURAÇÃO DO FASTAPI ---
 app = FastAPI(title="Bookmakers & ML API", version="1.0")
@@ -70,7 +80,6 @@ class BookmarkBatchRequest(BaseModel):
 # --- WEB SCRAPING E NLP ---
 def extrair_texto_e_data_de_url(url: str):
     try:
-        # Usa proxy de leitura para contornar bloqueios de Cloudflare em nuvem
         proxy_url = f"https://r.jina.ai/{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -105,7 +114,7 @@ def processar_fila_background():
                 item.event_date = data_evento
                 item.analisado_ml = 1
             else:
-                item.analisado_ml = -1  # Marca como erro de acesso/bloqueio
+                item.analisado_ml = -1
             db.commit()
     finally:
         db.close()
@@ -118,7 +127,6 @@ def receber_lote_bookmarks(payload: BookmarkBatchRequest, background_tasks: Back
     ja_existentes = 0
 
     for item in payload.bookmarks:
-        # Verifica se o link já existe no banco
         existe = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
         if not existe:
             db_bookmark = BookmarkModel(
@@ -133,8 +141,6 @@ def receber_lote_bookmarks(payload: BookmarkBatchRequest, background_tasks: Back
             ja_existentes += 1
 
     db.commit()
-
-    # Dispara processamento em background de forma assíncrona
     background_tasks.add_task(processar_fila_background)
 
     return {
@@ -212,7 +218,7 @@ def painel_visual(db: Session = Depends(get_db)):
                 <th>Amostra do Texto Extraído</th>
             </tr>
             {linhas}
-        </html>
+        </table>
     </body>
     </html>
     """
