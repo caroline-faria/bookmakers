@@ -13,15 +13,16 @@ from bs4 import BeautifulSoup
 import dateparser
 
 # --- APLICAÇÃO FASTAPI ---
-app = FastAPI(title="API de Bookmarks & ML - Render", version="1.1")
+app = FastAPI(title="API de Bookmarks & ML - Render", version="1.3")
 
-# --- CONFIGURAÇÃO DE CORS (OBRIGATÓRIO FICAR AQUI NO TOPO, LOGO APÓS O app = FastAPI()) ---
+# --- CONFIGURAÇÃO DE CORS (ROBUSTA PARA ERROS E EXTENSÕES) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite requisições de qualquer origem (inclusive extensões do Chrome)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos os métodos (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],  # Permite todos os headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -50,9 +51,10 @@ class BookmarkModel(Base):
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Campos para o Pipeline de Machine Learning
     extracted_text = Column(Text, nullable=True)
     event_date = Column(String, nullable=True)
-    analisado_ml = Column(Integer, default=0)
+    analisado_ml = Column(Integer, default=0) # 0 = Pendente, 1 = Processado, -1 = Erro
 
 Base.metadata.create_all(bind=engine)
 
