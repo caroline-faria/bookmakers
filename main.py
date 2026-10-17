@@ -59,6 +59,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import spacy # <--- Adicione este import
+
+# ... guarde seus outros códigos (FastAPI, engine, etc.) ...
+
+# --- CONFIGURAÇÃO E CARREGAMENTO DO MODELO DE ML (SpaCy) ---
+try:
+    nlp = spacy.load("pt_core_news_lg")
+except OSError:
+    print("Baixando modelo do SpaCy pt_core_news_lg...")
+    import os
+    os.system("python -m spacy download pt_core_news_lg")
+    nlp = spacy.load("pt_core_news_lg")
+
+# Palavras-chave semânticas para ajudar a validar se o trecho refere-se a um evento
+PALAVRAS_EVENTO = [
+    "show", "palestra", "webinar", "conferência", "workshop", "lançamento", 
+    "festa", "reunião", "encontro", "concerto", "festival", "seminário", 
+    "curso", "evento", "stand-up", "teatro", "exposição", "Live", "fórum"
+]
+
 def get_db():
     db = SessionLocal()
     try:
@@ -80,7 +100,7 @@ class BookmarkBatchRequest(BaseModel):
 # --- WEB SCRAPING E NLP ---
 def extrair_texto_e_data_de_url(url: str):
     try:
-        proxy_url = f"https://r.jina.ai/{url}"
+        proxy_url = f"https://jina.ai{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json, text/plain, */*"
@@ -95,13 +115,46 @@ def extrair_texto_e_data_de_url(url: str):
             if not texto_limpo or len(texto_limpo) < 50:
                 return None, None
             
-            parsed_date = dateparser.parse(texto_limpo[:600], languages=['pt', 'en'])
-            data_str = parsed_date.strftime('%Y-%m-%d') if parsed_date else None
+            # --- INTEGRAÇÃO COM MACHINE LEARNING (SpaCy) ---
+            doc = nlp(texto_limpo)
+            trechos_eventos = []
+            data_detectada_str = None
+
+            # Analisa o texto extraído sentença por sentença
+            for sent in doc.sents:
+                frase_txt = sent.text.strip()
+                frase_lower = frase_txt.lower()
+                
+                # Extrai as entidades (ex: DATE, TIME, LOC) criadas pela IA
+                entidades_na_frase = [ent.label_ for ent in sent.ents]
+                
+                # Regra de filtro: se tem marcação de tempo E palavra de evento
+                tem_tempo = "DATE" in entidades_na_frase or "TIME" in entidades_na_frase
+                contexto_evento = any(palavra in frase_lower for palavra in PALAVRAS_EVENTO)
+                
+                if tem_tempo and contexto_evento:
+                    trechos_eventos.append(frase_txt)
+                    
+                    # Tenta extrair a data específica desta frase de evento
+                    if not data_detectada_str:
+                        for ent in sent.ents:
+                            if ent.label_ in ["DATE", "TIME"]:
+                                parsed_date = dateparser.parse(ent.text, languages=['pt', 'en'])
+                                if parsed_date:
+                                    data_detectada_str = parsed_date.strftime('%Y-%m-%d')
+                                    break
+
+            # Se a IA encontrou eventos, salva apenas esses trechos purificados
+            if trechos_eventos:
+                texto_final_ml = "\n---\n".join(trechos_eventos)
+                return texto_final_ml, data_detectada_str
             
-            return texto_limpo, data_str
+            return "Nenhum trecho explícito de evento detectado pelo modelo.", None
+
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
         return None, None
+
 
 def processar_fila_background():
     db = SessionLocal()
