@@ -148,7 +148,11 @@ def extrair_texto_e_data_de_url(url: str):
             if trechos_eventos:
                 texto_final_ml = "\n---\n".join(trechos_eventos)
                 return texto_final_ml, data_detectada_str
-            
+
+
+            for sent in doc.sents:
+                print(f"Frase: {sent.text}")
+                print(f"Entidades: [(ent.text, ent.label_) for ent in sent.ents]")
             return "Nenhum trecho explícito de evento detectado pelo modelo.", None
 
     except Exception as e:
