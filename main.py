@@ -99,6 +99,7 @@ class BookmarkBatchRequest(BaseModel):
 
 # --- WEB SCRAPING E NLP ---
 def extrair_texto_e_data_de_url(url: str):
+    print(f">>> INICIANDO EXTRACAO PARA A URL: {url}")
     try:
         proxy_url = f"https://jina.ai{url}"
         headers = {
@@ -108,15 +109,21 @@ def extrair_texto_e_data_de_url(url: str):
         
         with httpx.Client(headers=headers, timeout=15.0, follow_redirects=True) as client:
             response = client.get(proxy_url)
+            print(f">>> Status Jina.ai para {url}: {response.status_code}")
             if response.status_code != 200:
                 return None, None
             
             texto_limpo = response.text[:4000]
+            print(f">>> Tamanho do texto obtido: {len(texto_limpo)} caracteres")
+            
             if not texto_limpo or len(texto_limpo) < 50:
+                print(">>> ERRO: Texto muito curto ou vazio!")
                 return None, None
             
-            # --- INTEGRAÇÃO COM MACHINE LEARNING (SpaCy) ---
+            # --- TUDO OK, AGORA RODA O SPAÇY ---
             doc = nlp(texto_limpo)
+            print(f">>> spaCy rodou com sucesso! Total de sentenças: {len(list(doc.sents))}")
+            
             trechos_eventos = []
             data_detectada_str = None
 
