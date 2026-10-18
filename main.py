@@ -234,6 +234,33 @@ def forçar_processamento(limite: int = 10, db: Session = Depends(get_db)):
         db.commit()
     return {"status": "concluído", "processados_nesta_execucao": processados}
 
+@app.get("/api/bookmarks/processar-links")
+def processar_links(limite: int = 10, db: Session = Depends(get_db)):
+    # Busca apenas os bookmarks que ainda não foram analisados
+    bookmarks_pendentes = db.query(Bookmark).filter(
+        (Bookmark.analisado_ml == 0) | (Bookmark.analisado_ml == None)
+    ).limit(limite).all()
+    
+    print(f">>> Encontrados {len(bookmarks_pendentes)} bookmarks pendentes para processar.")
+    
+    if not bookmarks_pendentes:
+        return {"mensagem": "Nenhum bookmark pendente para processar."}
+
+    for b in bookmarks_pendentes:
+        print(f">>> Processando bookmark ID {b.id} com URL: {b.url}")
+        texto, data_evento = extrair_texto_e_data_de_url(b.url)
+        
+        if texto:
+            b.extracted_text = texto
+            b.event_date = data_evento
+            b.analisado_ml = 1
+        else:
+            b.analisado_ml = -1
+        
+        db.commit()
+        
+    return {"mensagem": f"Processados {len(bookmarks_pendentes)} links com sucesso!"}
+
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
 def painel_visual(db: Session = Depends(get_db)):
@@ -287,3 +314,5 @@ def painel_visual(db: Session = Depends(get_db)):
     </html>
     """
     return HTMLResponse(content=html_content)
+
+    
