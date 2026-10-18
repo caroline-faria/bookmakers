@@ -185,12 +185,7 @@ def processar_fila_background():
 
 # --- ENDPOINTS DA API ---
 
-@app.get("/api/bookmarks/resetar-fila")
-def resetar_fila(db: Session = Depends(get_db)):
-    # Força todos os bookmarks a voltarem para o status 0 (pendente)
-    total_atualizados = db.query(BookmarkModel).update({BookmarkModel.analisado_ml: 0})
-    db.commit()
-    return {"mensagem": f"Sucesso! {total_atualizados} links foram resetados para a fila de processamento."}
+
 
 @app.get("/api/bookmarks")
 
@@ -239,6 +234,13 @@ def processar_links(limite: int = 10, db: Session = Depends(get_db)):
         db.commit()
         
     return {"mensagem": f"Processados {len(bookmarks_pendentes)} links com sucesso!"}
+
+@app.get("/api/bookmarks/resetar-fila")
+def resetar_fila(db: Session = Depends(get_db)):
+    # Força todos os bookmarks a voltarem para o status 0 (pendente)
+    total_atualizados = db.query(BookmarkModel).update({BookmarkModel.analisado_ml: 0})
+    db.commit()
+    return {"mensagem": f"Sucesso! {total_atualizados} links foram resetados para a fila de processamento."}
 
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
@@ -293,5 +295,7 @@ def painel_visual(db: Session = Depends(get_db)):
     </html>
     """
     return HTMLResponse(content=html_content)
+
+    
 
     
