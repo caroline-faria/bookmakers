@@ -65,13 +65,13 @@ import spacy # <--- Adicione este import
 
 # --- CONFIGURAÇÃO E CARREGAMENTO DO MODELO DE ML (SpaCy) ---
 try:
-    nlp = spacy.load("nlp = spacy.load("pt_core_news_sm")
+    nlp = spacy.load("pt_core_news_sm")
 except OSError:
-    print("Baixando modelo do SpaCy pt_core_news_lg...")
+    print("Baixando modelo do SpaCy pt_core_news_sm...")
     import os
-    os.system("python -m spacy download pt_core_news_lg")
-    nlp = spacy.load("pt_core_news_lg")
-
+    os.system("python -m spacy download pt_core_news_sm")
+    nlp = spacy.load("pt_core_news_sm")
+    
 # Palavras-chave semânticas para ajudar a validar se o trecho refere-se a um evento
 PALAVRAS_EVENTO = [
     "show", "palestra", "webinar", "conferência", "workshop", "lançamento", 
