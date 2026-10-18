@@ -1,6 +1,7 @@
 import os
 import httpx
 import dateparser
+import spacy
 from typing import List, Optional
 from datetime import datetime
 from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
@@ -59,16 +60,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import spacy # <--- Adicione este import
-
-# ... guarde seus outros códigos (FastAPI, engine, etc.) ...
-
 # --- CONFIGURAÇÃO E CARREGAMENTO DO MODELO DE ML (SpaCy) ---
 try:
     nlp = spacy.load("pt_core_news_sm")
 except OSError:
     print("Baixando modelo do SpaCy pt_core_news_sm...")
-    import os
     os.system("python -m spacy download pt_core_news_sm")
     nlp = spacy.load("pt_core_news_sm")
     
@@ -120,29 +116,24 @@ def extrair_texto_e_data_de_url(url: str):
                 print(">>> ERRO: Texto muito curto ou vazio!")
                 return None, None
             
-            # --- TUDO OK, AGORA RODA O SPAÇY ---
+            # --- RODA O SPAÇY ---
             doc = nlp(texto_limpo)
             print(f">>> spaCy rodou com sucesso! Total de sentenças: {len(list(doc.sents))}")
             
             trechos_eventos = []
             data_detectada_str = None
 
-            # Analisa o texto extraído sentença por sentença
             for sent in doc.sents:
                 frase_txt = sent.text.strip()
                 frase_lower = frase_txt.lower()
                 
-                # Extrai as entidades (ex: DATE, TIME, LOC) criadas pela IA
                 entidades_na_frase = [ent.label_ for ent in sent.ents]
-                
-                # Regra de filtro: se tem marcação de tempo E palavra de evento
                 tem_tempo = "DATE" in entidades_na_frase or "TIME" in entidades_na_frase
                 contexto_evento = any(palavra in frase_lower for palavra in PALAVRAS_EVENTO)
                 
                 if tem_tempo and contexto_evento:
                     trechos_eventos.append(frase_txt)
                     
-                    # Tenta extrair a data específica desta frase de evento
                     if not data_detectada_str:
                         for ent in sent.ents:
                             if ent.label_ in ["DATE", "TIME"]:
@@ -151,21 +142,15 @@ def extrair_texto_e_data_de_url(url: str):
                                     data_detectada_str = parsed_date.strftime('%Y-%m-%d')
                                     break
 
-            # Se a IA encontrou eventos, salva apenas esses trechos purificados
             if trechos_eventos:
                 texto_final_ml = "\n---\n".join(trechos_eventos)
                 return texto_final_ml, data_detectada_str
 
-
-            for sent in doc.sents:
-                print(f"Frase: {sent.text}")
-                print(f"Entidades: [(ent.text, ent.label_) for ent in sent.ents]")
             return "Nenhum trecho explícito de evento detectado pelo modelo.", None
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
         return None, None
-
 
 def processar_fila_background():
     db = SessionLocal()
@@ -185,41 +170,51 @@ def processar_fila_background():
 
 # --- ENDPOINTS DA API ---
 
+@app.post("/api/bookmarks")
+def receber_lote_bookmarks(payload: BookmarkBatchRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    novos_salvos = 0
+    ja_existentes = 0
 
+    for item in payload.bookmarks:
+        existe = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
+        if not existe:
+            db_bookmark = BookmarkModel(
+                title=item.title,
+                url=item.url,
+                description=str(item.dateAdded) if item.dateAdded else None,
+                analisado_ml=0
+            )
+            db.add(db_bookmark)
+            novos_salvos += 1
+        else:
+            ja_existentes += 1
+
+    db.commit()
+    background_tasks.add_task(processar_fila_background)
+
+    return {
+        "status": "sucesso",
+        "novos_salvos": novos_salvos,
+        "ja_existentes": ja_existentes,
+        "mensagem": "Lote recebido com sucesso e processamento iniciado."
+    }
 
 @app.get("/api/bookmarks")
-
 def listar_bookmarks(db: Session = Depends(get_db)):
     return db.query(BookmarkModel).all()
 
 @app.get("/api/bookmarks/processar-links")
-def forçar_processamento(limite: int = 10, db: Session = Depends(get_db)):
-    pendentes = db.query(BookmarkModel).filter(BookmarkModel.analisado_ml == 0).limit(limite).all()
-    processados = 0
-    for item in pendentes:
-        texto, data_evento = extrair_texto_e_data_de_url(item.url)
-        if texto:
-            item.extracted_text = texto
-            item.event_date = data_evento
-            item.analisado_ml = 1
-            processados += 1
-        else:
-            item.analisado_ml = -1
-        db.commit()
-    return {"status": "concluído", "processados_nesta_execucao": processados}
-
-@app.get("/api/bookmarks/processar-links")
 def processar_links(limite: int = 10, db: Session = Depends(get_db)):
-    # Busca apenas os bookmarks que ainda não foram analisados
-    bookmarks_pendentes = db.query(Bookmark).filter(
-        (Bookmark.analisado_ml == 0) | (Bookmark.analisado_ml == None)
+    bookmarks_pendentes = db.query(BookmarkModel).filter(
+        (BookmarkModel.analisado_ml == 0) | (BookmarkModel.analisado_ml == None)
     ).limit(limite).all()
     
     print(f">>> Encontrados {len(bookmarks_pendentes)} bookmarks pendentes para processar.")
     
     if not bookmarks_pendentes:
-        return {"mensagem": "Nenhum bookmark pendente para processar."}
+        return {"mensagem": "Nenhum bookmark pendente para processar.", "processados_nesta_execucao": 0}
 
+    processados = 0
     for b in bookmarks_pendentes:
         print(f">>> Processando bookmark ID {b.id} com URL: {b.url}")
         texto, data_evento = extrair_texto_e_data_de_url(b.url)
@@ -228,14 +223,13 @@ def processar_links(limite: int = 10, db: Session = Depends(get_db)):
             b.extracted_text = texto
             b.event_date = data_evento
             b.analisado_ml = 1
+            processados += 1
         else:
             b.analisado_ml = -1
         
         db.commit()
         
-    return {"mensagem": f"Processados {len(bookmarks_pendentes)} links com sucesso!"}
-
-
+    return {"status": "concluído", "processados_nesta_execucao": processados}
 
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
@@ -290,7 +284,3 @@ def painel_visual(db: Session = Depends(get_db)):
     </html>
     """
     return HTMLResponse(content=html_content)
-
-    
-
-    
