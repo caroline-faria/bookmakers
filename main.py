@@ -231,6 +231,12 @@ def processar_links(limite: int = 10, db: Session = Depends(get_db)):
         
     return {"status": "concluído", "processados_nesta_execucao": processados}
 
+@app.get("/api/bookmarks/resetar-fila")
+def resetar_fila(db: Session = Depends(get_db)):
+    total_atualizados = db.query(BookmarkModel).update({BookmarkModel.analisado_ml: 0})
+    db.commit()
+    return {"mensagem": f"Sucesso! {total_atualizados} links resetados para a fila."}
+    
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
 def painel_visual(db: Session = Depends(get_db)):
