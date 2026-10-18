@@ -185,36 +185,15 @@ def processar_fila_background():
 
 # --- ENDPOINTS DA API ---
 
-@app.post("/api/bookmarks")
-def receber_lote_bookmarks(payload: BookmarkBatchRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    novos_salvos = 0
-    ja_existentes = 0
-
-    for item in payload.bookmarks:
-        existe = db.query(BookmarkModel).filter(BookmarkModel.url == item.url).first()
-        if not existe:
-            db_bookmark = BookmarkModel(
-                title=item.title,
-                url=item.url,
-                description=str(item.dateAdded) if item.dateAdded else None,
-                analisado_ml=0
-            )
-            db.add(db_bookmark)
-            novos_salvos += 1
-        else:
-            ja_existentes += 1
-
+@app.get("/api/bookmarks/resetar-fila")
+def resetar_fila(db: Session = Depends(get_db)):
+    # Força todos os bookmarks a voltarem para o status 0 (pendente)
+    total_atualizados = db.query(BookmarkModel).update({BookmarkModel.analisado_ml: 0})
     db.commit()
-    background_tasks.add_task(processar_fila_background)
-
-    return {
-        "status": "sucesso",
-        "novos_salvos": novos_salvos,
-        "ja_existentes": ja_existentes,
-        "mensagem": "Lote recebido com sucesso e processamento iniciado."
-    }
+    return {"mensagem": f"Sucesso! {total_atualizados} links foram resetados para a fila de processamento."}
 
 @app.get("/api/bookmarks")
+
 def listar_bookmarks(db: Session = Depends(get_db)):
     return db.query(BookmarkModel).all()
 
