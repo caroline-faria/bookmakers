@@ -65,7 +65,7 @@ import spacy # <--- Adicione este import
 
 # --- CONFIGURAÇÃO E CARREGAMENTO DO MODELO DE ML (SpaCy) ---
 try:
-    nlp = spacy.load("pt_core_news_lg")
+    nlp = spacy.load("nlp = spacy.load("pt_core_news_sm")
 except OSError:
     print("Baixando modelo do SpaCy pt_core_news_lg...")
     import os
