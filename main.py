@@ -101,7 +101,7 @@ class BookmarkBatchRequest(BaseModel):
 def extrair_texto_e_data_de_url(url: str):
     print(f">>> INICIANDO EXTRACAO PARA A URL: {url}")
     try:
-        proxy_url = f"https://jina.ai{url}"
+        proxy_url = f"https://r.jina.ai/{url}"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json, text/plain, */*"
