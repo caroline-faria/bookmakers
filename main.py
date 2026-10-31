@@ -94,6 +94,7 @@ class BookmarkBatchRequest(BaseModel):
     bookmarks: List[BookmarkItem]
 
 # --- WEB SCRAPING E NLP ---
+
 def extrair_texto_e_data_de_url(url: str):
     print(f">>> INICIANDO EXTRACAO DINAMICA PARA A URL: {url}")
     try:
@@ -105,11 +106,27 @@ def extrair_texto_e_data_de_url(url: str):
         
         with httpx.Client(headers=headers, timeout=15.0, follow_redirects=True) as client:
             response = client.get(proxy_url)
+            print(f">>> Status Jina.ai para {url}: {response.status_code}")
             if response.status_code != 200:
                 return None, None
             
-            texto_limpo = response.text[:5000]
+            # --- LIMPEZA DE RUÍDOS DE INTERFACE (UI) ---
+            texto_bruto = response.text[:6000]
+            
+            # Termos comuns de carregamento ou menus de sites que poluem a extração
+            lixos_para_remover = [
+                "Carregando...", "Explore", "Portal do Vestibular", 
+                "Menu", "Pesquisar", "Login", "Cadastre-se", 
+                "Todos os direitos reservados", "Cookie", "Cookies"
+            ]
+            for lixo in lixos_para_remover:
+                texto_bruto = texto_bruto.replace(lixo, "")
+                
+            texto_limpo = texto_bruto
+            print(f">>> Tamanho do texto limpo obtido: {len(texto_limpo)} caracteres")
+            
             if not texto_limpo or len(texto_limpo) < 50:
+                print(">>> ERRO: Texto muito curto ou vazio após limpeza!")
                 return None, None
             
             # --- PROCESSAMENTO LINGUÍSTICO COM SPACY ---
@@ -127,8 +144,9 @@ def extrair_texto_e_data_de_url(url: str):
                     # Verifica se a frase tem estrutura de ação (contém verbos que indicam ocorrência/agenda)
                     tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
-                    # Evita falsos positivos comuns (como rodapés de copyright: "© 2026")
-                    eh_copyright = any(termo in frase_txt.lower() for termo in ["todos os direitos", "copyright", "todos os direitos reservados"])
+                    # Filtra falsos positivos comuns (como rodapés de copyright)
+                    frase_lower = frase_txt.lower()
+                    eh_copyright = any(termo in frase_lower for termo in ["todos os direitos", "copyright", "política de privacidade"])
                     
                     if tem_verbo and not eh_copyright and len(frase_txt) > 20:
                         trechos_eventos.append(frase_txt)
@@ -145,12 +163,15 @@ def extrair_texto_e_data_de_url(url: str):
                 texto_final_ml = "\n---\n".join(trechos_eventos[:10])
                 return texto_final_ml, data_detectada_str
 
-            # Fallback caso a estrutura estrita não pegue sentenças isoladas
+            # Fallback inteligente caso a estrutura estrita não isole sentenças com verbos
             return texto_limpo[:1500], data_detectada_str
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
         return None, None
+
+
+
 
 def processar_fila_background():
     db = SessionLocal()
