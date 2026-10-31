@@ -110,24 +110,33 @@ def extrair_texto_e_data_de_url(url: str):
             if response.status_code != 200:
                 return None, None
             
-            texto_bruto = response.text[:8000]
+            # Limite expandido para ultrapassar menus longos de portais como Vunesp
+            texto_bruto = response.text[:12000]
             
-            # --- FILTRAGEM INTELIGENTE POR LINHAS (ELIMINA MENUS E RUÍDOS) ---
+            # --- FILTRAGEM INTELIGENTE POR LINHAS ---
             linhas_filtradas = []
             for linha in texto_bruto.split("\n"):
                 linha_limpa = linha.strip()
                 
-                # Critérios para descartar a linha (lixo de menu, acessibilidade, links soltos)
+                # Critérios para descartar linhas de menu, acessibilidade e links de navegação
                 if not linha_limpa:
                     continue
-                if len(linha_limpa) < 25:  # Descarta linhas muito curtas (menus, links isolados)
+                if len(linha_limpa) < 25:
                     continue
-                if linha_limpa.startswith("[") and "]" in linha_limpa:  # Descarta marcações de links de menu
+                if linha_limpa.startswith("[") and "]" in linha_limpa:
                     continue
+                
+                # Elimina itens de menu formatados em lista no Markdown (ex: - [Quem Somos](...))
+                if linha_limpa.startswith("-   [") or linha_limpa.startswith("*   [") or linha_limpa.startswith("- [") or linha_limpa.startswith("* ["):
+                    continue
+                
+                # Termos institucionais e de interface para descarte
                 if any(termo in linha_limpa.lower() for termo in [
                     "acessibilidade", "rybena", "teclas de atalho", "mapa do site", 
                     "redes sociais", "todos os direitos", "copyright", "carregando...",
-                    "política de privacidade", "cookie", "fale conosco"
+                    "política de privacidade", "cookie", "fale conosco", "quem somos",
+                    "área de atuação", "como contratar", "gestão antissuborno",
+                    "portal do cliente", "comissões", "diferenciais", "certificações"
                 ]):
                     continue
                 
@@ -148,17 +157,17 @@ def extrair_texto_e_data_de_url(url: str):
             for sent in doc.sents:
                 frase_txt = sent.text.strip()
                 
-                # Verifica se a frase possui uma entidade de tempo/data estatística
+                # Verifica se a frase possui uma entidade estatística de tempo/data
                 entidades_tempo = [ent for ent in sent.ents if ent.label_ in ["DATE", "TIME"]]
                 
                 if entidades_tempo:
-                    # Verifica se a frase tem estrutura de ação (contém verbos que indicam ocorrência/agenda)
+                    # Garante que a sentença tem estrutura de ação/ocorrência (contém verbo)
                     tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
                     if tem_verbo and len(frase_txt) > 20:
                         trechos_eventos.append(frase_txt)
                         
-                        # Captura a primeira data válida usando o dateparser na entidade do SpaCy
+                        # Captura a primeira data válida usando o dateparser
                         if not data_detectada_str:
                             for ent in entidades_tempo:
                                 parsed_date = dateparser.parse(ent.text, languages=['pt', 'en'])
@@ -170,7 +179,7 @@ def extrair_texto_e_data_de_url(url: str):
                 texto_final_ml = "\n---\n".join(trechos_eventos[:10])
                 return texto_final_ml, data_detectada_str
 
-            # Fallback caso a estrutura estrita não isole sentenças com verbos
+            # Fallback seguro caso a estrutura estrita de frases com verbos não seja isolada
             return texto_limpo[:1500], data_detectada_str
 
     except Exception as e:
