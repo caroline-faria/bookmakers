@@ -266,7 +266,69 @@ def debug_url(url: str):
             "tipo_erro": type(e).__name__,
             "mensagem": "Falha ao conectar ou processar a URL."
         }
+
+# --- NOVO PAINEL VISUAL PARA VER TODOS OS TEXTOS EXTRAÍDOS ---
+@app.get("/painel/textos", response_class=HTMLResponse)
+def painel_textos_completos(db: Session = Depends(get_db)):
+    # Busca apenas os bookmarks que possuem texto extraído
+    bookmarks = db.query(BookmarkModel).filter(BookmarkModel.extracted_text != None).order_by(BookmarkModel.created_at.desc()).all()
+    
+    cards_html = ""
+    for b in bookmarks:
+        status_txt = "Processado com Sucesso" if b.analisado_ml == 1 else ("Erro" if b.analisado_ml == -1 else "Pendente")
+        cor_status = "#27ae60" if b.analisado_ml == 1 else ("#c0392b" if b.analisado_ml == -1 else "#d35400")
         
+        cards_html += f"""
+        <div style="background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-left: 5px solid {cor_status};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div>
+                    <h3 style="margin: 0 0 5px 0; color: #2c3e50;">{b.title}</h3>
+                    <a href="{b.url}" target="_blank" style="font-size: 13px; color: #2980b9; text-decoration: none; word-break: break-all;">🔗 {b.url}</a>
+                </div>
+                <div style="text-align: right; min-width: 140px;">
+                    <span style="background: {cor_status}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">{status_txt}</span><br>
+                    <small style="color: #7f8c8d; margin-top: 5px; display: inline-block;">📅 Alvo: <b>{b.event_date or 'Não detectada'}</b></small>
+                </div>
+            </div>
+            <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 12px; max-height: 250px; overflow-y: auto; font-family: monospace; font-size: 12px; color: #34495e; white-space: pre-wrap;">{b.extracted_text}</div>
+        </div>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Inspeção de Textos Extraídos - Bookmakers</title>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; }}
+            .container {{ max-width: 1000px; margin: 0 auto; }}
+            h2 {{ color: #2c3e50; margin-bottom: 5px; }}
+            .info-bar {{ background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }}
+            .btn {{ background: #3498db; color: white; padding: 8px 15px; border-radius: 4px; text-decoration: none; font-size: 13px; font-weight: bold; }}
+            .btn:hover {{ background: #2980b9; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="info-bar">
+                <div>
+                    <h2>📖 Textos Extraídos dos Sites</h2>
+                    <p style="margin: 0; color: #7f8c8d; font-size: 13px;">Visualização completa do conteúdo processado pela IA em cada link salvo.</p>
+                </div>
+                <div>
+                    <a href="/painel" class="btn">📊 Voltar ao Painel Geral</a>
+                </div>
+            </div>
+            {cards_html if cards_html else "<p style='text-align: center; color: #7f8c8d; padding: 40px;'>Nenhum texto extraído encontrado no banco de dados ainda. Rode o processamento da fila primeiro!</p>"}
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+
+
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
 def painel_visual(db: Session = Depends(get_db)):
