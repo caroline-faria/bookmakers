@@ -95,7 +95,7 @@ class BookmarkBatchRequest(BaseModel):
 
 # --- WEB SCRAPING E NLP ---
 def extrair_texto_e_data_de_url(url: str):
-    print(f">>> INICIANDO EXTRACAO PARA A URL: {url}")
+    print(f">>> INICIANDO EXTRACAO DINAMICA PARA A URL: {url}")
     try:
         proxy_url = f"https://r.jina.ai/{url}"
         headers = {
@@ -105,48 +105,48 @@ def extrair_texto_e_data_de_url(url: str):
         
         with httpx.Client(headers=headers, timeout=15.0, follow_redirects=True) as client:
             response = client.get(proxy_url)
-            print(f">>> Status Jina.ai para {url}: {response.status_code}")
             if response.status_code != 200:
                 return None, None
             
-            texto_limpo = response.text[:4000]
-            print(f">>> Tamanho do texto obtido: {len(texto_limpo)} caracteres")
-            
+            texto_limpo = response.text[:5000]
             if not texto_limpo or len(texto_limpo) < 50:
-                print(">>> ERRO: Texto muito curto ou vazio!")
                 return None, None
             
-            # --- RODA O SPAÇY ---
+            # --- PROCESSAMENTO LINGUÍSTICO COM SPACY ---
             doc = nlp(texto_limpo)
-            print(f">>> spaCy rodou com sucesso! Total de sentenças: {len(list(doc.sents))}")
-            
             trechos_eventos = []
             data_detectada_str = None
 
             for sent in doc.sents:
                 frase_txt = sent.text.strip()
-                frase_lower = frase_txt.lower()
                 
-                entidades_na_frase = [ent.label_ for ent in sent.ents]
-                tem_tempo = "DATE" in entidades_na_frase or "TIME" in entidades_na_frase
-                contexto_evento = any(palavra in frase_lower for palavra in PALAVRAS_EVENTO)
+                # Verifica se a frase possui uma entidade de tempo/data estatística
+                entidades_tempo = [ent for ent in sent.ents if ent.label_ in ["DATE", "TIME"]]
                 
-                if tem_tempo and contexto_evento:
-                    trechos_eventos.append(frase_txt)
+                if entidades_tempo:
+                    # Verifica se a frase tem estrutura de ação (contém verbos que indicam ocorrência/agenda)
+                    tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
-                    if not data_detectada_str:
-                        for ent in sent.ents:
-                            if ent.label_ in ["DATE", "TIME"]:
+                    # Evita falsos positivos comuns (como rodapés de copyright: "© 2026")
+                    eh_copyright = any(termo in frase_txt.lower() for termo in ["todos os direitos", "copyright", "todos os direitos reservados"])
+                    
+                    if tem_verbo and not eh_copyright and len(frase_txt) > 20:
+                        trechos_eventos.append(frase_txt)
+                        
+                        # Captura a primeira data válida usando o dateparser na entidade do SpaCy
+                        if not data_detectada_str:
+                            for ent in entidades_tempo:
                                 parsed_date = dateparser.parse(ent.text, languages=['pt', 'en'])
                                 if parsed_date:
                                     data_detectada_str = parsed_date.strftime('%Y-%m-%d')
                                     break
 
             if trechos_eventos:
-                texto_final_ml = "\n---\n".join(trechos_eventos)
+                texto_final_ml = "\n---\n".join(trechos_eventos[:10])
                 return texto_final_ml, data_detectada_str
 
-            return "Nenhum trecho explícito de evento detectado pelo modelo.", None
+            # Fallback caso a estrutura estrita não pegue sentenças isoladas
+            return texto_limpo[:1500], data_detectada_str
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
