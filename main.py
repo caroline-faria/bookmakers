@@ -236,6 +236,28 @@ def resetar_fila(db: Session = Depends(get_db)):
     total_atualizados = db.query(BookmarkModel).update({BookmarkModel.analisado_ml: 0})
     db.commit()
     return {"mensagem": f"Sucesso! {total_atualizados} links resetados para a fila."}
+
+
+@app.get("/api/debug-url")
+def debug_url(url: str):
+    import requests
+    from bs4 import BeautifulSoup
+    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    resp = requests.get(url, headers=headers, timeout=10)
+    
+    soup = BeautifulSoup(resp.text, "html.parser")
+    # Remove lixo
+    for s in soup(["script", "style", "nav", "footer"]):
+        s.decompose()
+        
+    texto_limpo = soup.get_text(separator=" ", strip=True)
+    
+    return {
+        "status_http": resp.status_code,
+        "tamanho_texto": len(texto_limpo),
+        "amostra": texto_limpo[:500] # Mostra os primeiros 500 caracteres
+    }
     
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
