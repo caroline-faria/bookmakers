@@ -243,22 +243,30 @@ def debug_url(url: str):
     import requests
     from bs4 import BeautifulSoup
     
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    resp = requests.get(url, headers=headers, timeout=10)
-    
-    soup = BeautifulSoup(resp.text, "html.parser")
-    # Remove lixo
-    for s in soup(["script", "style", "nav", "footer"]):
-        s.decompose()
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        # Tenta fazer a requisição com um timeout de 10 segundos
+        resp = requests.get(url, headers=headers, timeout=10)
         
-    texto_limpo = soup.get_text(separator=" ", strip=True)
-    
-    return {
-        "status_http": resp.status_code,
-        "tamanho_texto": len(texto_limpo),
-        "amostra": texto_limpo[:500] # Mostra os primeiros 500 caracteres
-    }
-    
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for s in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            s.decompose()
+            
+        texto_limpo = soup.get_text(separator=" ", strip=True)
+        
+        return {
+            "status_http": resp.status_code,
+            "tamanho_texto": len(texto_limpo),
+            "amostra": texto_limpo[:500]
+        }
+    except Exception as e:
+        # Retorna o erro exato que aconteceu no servidor
+        return {
+            "erro": str(e),
+            "tipo_erro": type(e).__name__,
+            "mensagem": "Falha ao conectar ou processar a URL."
+        }
+        
 # --- PAINEL VISUAL HTML ---
 @app.get("/painel", response_class=HTMLResponse)
 def painel_visual(db: Session = Depends(get_db)):
