@@ -110,14 +110,19 @@ def extrair_texto_e_data_de_url(url: str):
             if response.status_code != 200:
                 return None, None
             
-            # --- LIMPEZA DE RUÍDOS DE INTERFACE (UI) ---
+            # --- LIMPEZA DE RUÍDOS DE INTERFACE, MENUS E ACESSIBILIDADE ---
             texto_bruto = response.text[:6000]
             
-            # Termos comuns de carregamento ou menus de sites que poluem a extração
             lixos_para_remover = [
                 "Carregando...", "Explore", "Portal do Vestibular", 
                 "Menu", "Pesquisar", "Login", "Cadastre-se", 
-                "Todos os direitos reservados", "Cookie", "Cookies"
+                "Todos os direitos reservados", "Cookie", "Cookies",
+                "Recursos de acessibilidade Rybena disponíveis",
+                "Ir para o conteúdo principal", "Ir para Teclas de Atalho",
+                "Ir para Concursos", "Ir para Vestibulares", "Ir para Avaliações",
+                "Ir para Links Unesp", "Ir para Mapa do Site", 
+                "Ir para Redes Sociais e Contato", "Fundação Vunesp",
+                "Ir para o", "Ir para busca de Projeto"
             ]
             for lixo in lixos_para_remover:
                 texto_bruto = texto_bruto.replace(lixo, "")
