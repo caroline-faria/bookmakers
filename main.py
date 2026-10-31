@@ -110,10 +110,10 @@ def extrair_texto_e_data_de_url(url: str):
             if response.status_code != 200:
                 return None, None
             
-            # Pega até 15.000 caracteres para ultrapassar menus extensos
+            # Limite expandido para 15.000 caracteres (ultrapassa cabeçalhos longos)
             texto_bruto = response.text[:15000]
             
-            # --- FILTRAGEM INTELIGENTE BASEADA EM LINHAS ---
+            # --- FILTRAGEM INTELIGENTE DE RUÍDOS DE INTERFACE, MENUS E CABEÇALHOS ---
             linhas_filtradas = []
             for linha in texto_bruto.split("\n"):
                 linha_limpa = linha.strip()
@@ -121,21 +121,27 @@ def extrair_texto_e_data_de_url(url: str):
                 if not linha_limpa:
                     continue
                 
-                # Joga fora linhas com links do Markdown (elimina 100% dos menus da Vunesp)
+                # Descarte por comprimento mínimo
+                if len(linha_limpa) < 25:
+                    continue
+                
+                # Joga fora qualquer linha formatada com links de Markdown (elimina 100% dos menus de navegação)
                 if "[" in linha_limpa and "]" in linha_limpa:
                     continue
                 
-                # Joga fora linhas curtas (botões, rótulos e títulos isolados de menu)
-                if len(linha_limpa) < 30:
-                    continue
-                
-                # Joga fora termos institucionais/acessibilidade
-                if any(termo in linha_limpa.lower() for termo in [
+                # Termos de ruído genéricos (acessibilidade, cabeçalhos de blogs, GitHub, menus de portfólios e rodapés)
+                termo_lixo = any(termo in linha_limpa.lower() for termo in [
                     "acessibilidade", "rybena", "teclas de atalho", "mapa do site", 
                     "redes sociais", "todos os direitos", "copyright", "carregando...",
-                    "política de privacidade", "cookie", "fale conosco", "quem somos",
-                    "área de atuação", "como contratar", "gestão antissuborno"
-                ]):
+                    "política de privacidade", "privacy policy", "cookie", "fale conosco", 
+                    "quem somos", "área de atuação", "como contratar", "gestão antissuborno",
+                    "portal do cliente", "comissões", "diferenciais", "certificações",
+                    "skip to", "search for", "archives", "close search",
+                    "github repository hosting", "copilot ai", "codespaces",
+                    "code quality", "secret protection", "build with copilot"
+                ])
+                
+                if termo_lixo:
                     continue
                 
                 linhas_filtradas.append(linha_limpa)
@@ -155,11 +161,11 @@ def extrair_texto_e_data_de_url(url: str):
             for sent in doc.sents:
                 frase_txt = sent.text.strip()
                 
-                # Identifica entidades de data/tempo
+                # Procura por entidades estatísticas de tempo ou data
                 entidades_tempo = [ent for ent in sent.ents if ent.label_ in ["DATE", "TIME"]]
                 
                 if entidades_tempo:
-                    # Checa presença de verbos de ação na frase
+                    # Verifica se a estrutura da frase possui verbos de ação
                     tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
                     if tem_verbo and len(frase_txt) > 20:
@@ -167,22 +173,21 @@ def extrair_texto_e_data_de_url(url: str):
                         
                         if not data_detectada_str:
                             for ent in entidades_tempo:
-                                parsed_date = dateparser.parse(ent.text, languages=['pt', 'en'])
+                                parsed_date = dateparser.parse(ent.text, languages=['pt', 'en', 'fr'])
                                 if parsed_date:
                                     data_detectada_str = parsed_date.strftime('%Y-%m-%d')
                                     break
 
             if trechos_eventos:
-                # Retorna apenas a frase/trecho exato mais relevante da data/evento
+                # Retorna o trecho exato do evento detectado
                 return trechos_eventos[0], data_detectada_str
 
-            # Fallback enxuto
-            return texto_limpo[:800], data_detectada_str
+            # Fallback limpo caso não haja frases estritas com datas/verbos
+            return texto_limpo[:1000], data_detectada_str
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
         return None, None
-
 
 def processar_fila_background():
     db = SessionLocal()
