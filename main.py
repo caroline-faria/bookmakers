@@ -110,28 +110,34 @@ def extrair_texto_e_data_de_url(url: str):
             if response.status_code != 200:
                 return None, None
             
-            # --- LIMPEZA DE RUÍDOS DE INTERFACE, MENUS E ACESSIBILIDADE ---
-            texto_bruto = response.text[:6000]
+            texto_bruto = response.text[:8000]
             
-            lixos_para_remover = [
-                "Carregando...", "Explore", "Portal do Vestibular", 
-                "Menu", "Pesquisar", "Login", "Cadastre-se", 
-                "Todos os direitos reservados", "Cookie", "Cookies",
-                "Recursos de acessibilidade Rybena disponíveis",
-                "Ir para o conteúdo principal", "Ir para Teclas de Atalho",
-                "Ir para Concursos", "Ir para Vestibulares", "Ir para Avaliações",
-                "Ir para Links Unesp", "Ir para Mapa do Site", 
-                "Ir para Redes Sociais e Contato", "Fundação Vunesp",
-                "Ir para o", "Ir para busca de Projeto"
-            ]
-            for lixo in lixos_para_remover:
-                texto_bruto = texto_bruto.replace(lixo, "")
+            # --- FILTRAGEM INTELIGENTE POR LINHAS (ELIMINA MENUS E RUÍDOS) ---
+            linhas_filtradas = []
+            for linha in texto_bruto.split("\n"):
+                linha_limpa = linha.strip()
                 
-            texto_limpo = texto_bruto
-            print(f">>> Tamanho do texto limpo obtido: {len(texto_limpo)} caracteres")
+                # Critérios para descartar a linha (lixo de menu, acessibilidade, links soltos)
+                if not linha_limpa:
+                    continue
+                if len(linha_limpa) < 25:  # Descarta linhas muito curtas (menus, links isolados)
+                    continue
+                if linha_limpa.startswith("[") and "]" in linha_limpa:  # Descarta marcações de links de menu
+                    continue
+                if any(termo in linha_limpa.lower() for termo in [
+                    "acessibilidade", "rybena", "teclas de atalho", "mapa do site", 
+                    "redes sociais", "todos os direitos", "copyright", "carregando...",
+                    "política de privacidade", "cookie", "fale conosco"
+                ]):
+                    continue
+                
+                linhas_filtradas.append(linha_limpa)
+            
+            texto_limpo = "\n".join(linhas_filtradas)
+            print(f">>> Tamanho do texto após filtro de linhas: {len(texto_limpo)} caracteres")
             
             if not texto_limpo or len(texto_limpo) < 50:
-                print(">>> ERRO: Texto muito curto ou vazio após limpeza!")
+                print(">>> ERRO: Texto muito curto ou vazio após filtragem!")
                 return None, None
             
             # --- PROCESSAMENTO LINGUÍSTICO COM SPACY ---
@@ -149,11 +155,7 @@ def extrair_texto_e_data_de_url(url: str):
                     # Verifica se a frase tem estrutura de ação (contém verbos que indicam ocorrência/agenda)
                     tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
-                    # Filtra falsos positivos comuns (como rodapés de copyright)
-                    frase_lower = frase_txt.lower()
-                    eh_copyright = any(termo in frase_lower for termo in ["todos os direitos", "copyright", "política de privacidade"])
-                    
-                    if tem_verbo and not eh_copyright and len(frase_txt) > 20:
+                    if tem_verbo and len(frase_txt) > 20:
                         trechos_eventos.append(frase_txt)
                         
                         # Captura a primeira data válida usando o dateparser na entidade do SpaCy
@@ -168,14 +170,12 @@ def extrair_texto_e_data_de_url(url: str):
                 texto_final_ml = "\n---\n".join(trechos_eventos[:10])
                 return texto_final_ml, data_detectada_str
 
-            # Fallback inteligente caso a estrutura estrita não isole sentenças com verbos
+            # Fallback caso a estrutura estrita não isole sentenças com verbos
             return texto_limpo[:1500], data_detectada_str
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
         return None, None
-
-
 
 
 def processar_fila_background():
