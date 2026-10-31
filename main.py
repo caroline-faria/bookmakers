@@ -110,33 +110,31 @@ def extrair_texto_e_data_de_url(url: str):
             if response.status_code != 200:
                 return None, None
             
-            # Limite expandido para ultrapassar menus longos de portais como Vunesp
-            texto_bruto = response.text[:12000]
+            # Pega até 15.000 caracteres para ultrapassar menus extensos
+            texto_bruto = response.text[:15000]
             
-            # --- FILTRAGEM INTELIGENTE POR LINHAS ---
+            # --- FILTRAGEM INTELIGENTE BASEADA EM LINHAS ---
             linhas_filtradas = []
             for linha in texto_bruto.split("\n"):
                 linha_limpa = linha.strip()
                 
-                # Critérios para descartar linhas de menu, acessibilidade e links de navegação
                 if not linha_limpa:
                     continue
-                if len(linha_limpa) < 25:
-                    continue
-                if linha_limpa.startswith("[") and "]" in linha_limpa:
+                
+                # Joga fora linhas com links do Markdown (elimina 100% dos menus da Vunesp)
+                if "[" in linha_limpa and "]" in linha_limpa:
                     continue
                 
-                # Elimina itens de menu formatados em lista no Markdown (ex: - [Quem Somos](...))
-                if linha_limpa.startswith("-   [") or linha_limpa.startswith("*   [") or linha_limpa.startswith("- [") or linha_limpa.startswith("* ["):
+                # Joga fora linhas curtas (botões, rótulos e títulos isolados de menu)
+                if len(linha_limpa) < 30:
                     continue
                 
-                # Termos institucionais e de interface para descarte
+                # Joga fora termos institucionais/acessibilidade
                 if any(termo in linha_limpa.lower() for termo in [
                     "acessibilidade", "rybena", "teclas de atalho", "mapa do site", 
                     "redes sociais", "todos os direitos", "copyright", "carregando...",
                     "política de privacidade", "cookie", "fale conosco", "quem somos",
-                    "área de atuação", "como contratar", "gestão antissuborno",
-                    "portal do cliente", "comissões", "diferenciais", "certificações"
+                    "área de atuação", "como contratar", "gestão antissuborno"
                 ]):
                     continue
                 
@@ -157,17 +155,16 @@ def extrair_texto_e_data_de_url(url: str):
             for sent in doc.sents:
                 frase_txt = sent.text.strip()
                 
-                # Verifica se a frase possui uma entidade estatística de tempo/data
+                # Identifica entidades de data/tempo
                 entidades_tempo = [ent for ent in sent.ents if ent.label_ in ["DATE", "TIME"]]
                 
                 if entidades_tempo:
-                    # Garante que a sentença tem estrutura de ação/ocorrência (contém verbo)
+                    # Checa presença de verbos de ação na frase
                     tem_verbo = any(token.pos_ == "VERB" for token in sent)
                     
                     if tem_verbo and len(frase_txt) > 20:
                         trechos_eventos.append(frase_txt)
                         
-                        # Captura a primeira data válida usando o dateparser
                         if not data_detectada_str:
                             for ent in entidades_tempo:
                                 parsed_date = dateparser.parse(ent.text, languages=['pt', 'en'])
@@ -176,11 +173,11 @@ def extrair_texto_e_data_de_url(url: str):
                                     break
 
             if trechos_eventos:
-                texto_final_ml = "\n---\n".join(trechos_eventos[:10])
-                return texto_final_ml, data_detectada_str
+                # Retorna apenas a frase/trecho exato mais relevante da data/evento
+                return trechos_eventos[0], data_detectada_str
 
-            # Fallback seguro caso a estrutura estrita de frases com verbos não seja isolada
-            return texto_limpo[:1500], data_detectada_str
+            # Fallback enxuto
+            return texto_limpo[:800], data_detectada_str
 
     except Exception as e:
         print(f"Erro ao processar URL {url}: {e}")
